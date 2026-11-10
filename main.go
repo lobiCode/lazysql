@@ -86,7 +86,7 @@ func main() {
 		log.Fatal("Only a single connection is allowed")
 	}
 
-	err = app.App.Run(components.WithUpdates(mainPages, version), *configFile)
+	err = app.App.Run(mainPages, *configFile)
 	if err != nil {
 		log.Fatalf("Error running app: %v", err)
 	}
