@@ -12,7 +12,6 @@ import (
 	"github.com/jorgerojas26/lazysql/app"
 	"github.com/jorgerojas26/lazysql/commands"
 	"github.com/jorgerojas26/lazysql/helpers/logger"
-	"github.com/jorgerojas26/lazysql/internal/telemetry"
 	"github.com/jorgerojas26/lazysql/lib"
 )
 
@@ -74,7 +73,6 @@ func NewJSONViewer(pages *tview.Pages) *JSONViewer {
 }
 
 func (v *JSONViewer) Show(rowData map[string]string, focus tview.Primitive) {
-	usage.Feature(telemetry.JSONViewer)
 	v.primitiveToFocus = focus
 
 	structuredRowData := make(map[string]any)
