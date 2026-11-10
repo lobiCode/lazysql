@@ -277,6 +277,36 @@ func TestEditorDMLDoesNotRefreshSelectedTable(t *testing.T) {
 	}
 }
 
+// Regression: after a successful INSERT/UPDATE/DELETE the editor switched to
+// the (empty) results grid, hiding the "N rows affected" panel entirely, so
+// nothing on screen confirmed that the statement ran.
+func TestEditorDMLShowsAffectedRowsPanel(t *testing.T) {
+	driver := &editorDMLNoRefreshDriver{dmlDone: make(chan struct{})}
+	table, editor, pages := newEditorPipelineTable(driver)
+	table.ResultsInfo = tview.NewTextView()
+	table.EditorPages.AddPage(pageNameTableEditorResultsInfo, table.ResultsInfo, true, false)
+	appDone := startEditorPipeline(t, table, editor, pages)
+	defer stopEditorPipeline(t, appDone, table)
+
+	editor.Publish(eventSQLEditorQuery, "UPDATE orders SET id = 2")
+	select {
+	case <-driver.dmlDone:
+	case <-time.After(3 * time.Second):
+		t.Fatal("editor DML did not execute")
+	}
+	frontPage := func() string {
+		return editorUIValue(func() string { front, _ := table.EditorPages.GetFrontPage(); return front })
+	}
+	waitFor(t, func() bool { return frontPage() == pageNameTableEditorResultsInfo })
+	if got := editorUIValue(func() string { return table.ResultsInfo.GetText(true) }); !strings.HasPrefix(got, "updated (") {
+		t.Fatalf("results info = %q, want driver message with elapsed time", got)
+	}
+
+	// The next query must bring the grid back so its running status is visible.
+	editor.Publish(eventSQLEditorQuery, "SELECT 1")
+	waitFor(t, func() bool { return frontPage() == pageNameTableEditorTable })
+}
+
 func TestEditorStreamRendersFirstBatchBeforeStreamCompletes(t *testing.T) {
 	driver := newBlockingEditorStreamDriver()
 	table, editor, pages := newEditorPipelineTable(driver)

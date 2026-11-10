@@ -1130,6 +1130,11 @@ func (table *ResultsTable) subscribeToEditorChanges() {
 				table.Pagination.ClearCount()
 				table.Pagination.SetPageInfo(0, true)
 				table.SetQueryStatus("Running query… [Esc cancel]")
+				// A previous DML result may still be showing its info panel;
+				// bring the grid back so the running status is visible.
+				if table.EditorPages != nil {
+					table.EditorPages.SwitchToPage(pageNameTableEditorTable)
+				}
 				run = table.beginEditorQuery(generation)
 			})
 
@@ -1559,7 +1564,7 @@ func (table *ResultsTable) runEditorDMLQuery(ctx context.Context, run *editorQue
 			return
 		}
 
-		table.SetResultsInfo(result)
+		table.SetResultsInfo(fmt.Sprintf("%s (%s)", result, time.Since(run.started).Round(time.Millisecond)))
 		table.SetQueryStatus("")
 		table.SetLoading(false)
 		// Clear filtering state before closing the quit confirmation: closing it
@@ -1570,7 +1575,10 @@ func (table *ResultsTable) runEditorDMLQuery(ctx context.Context, run *editorQue
 		table.HighlightTable()
 		table.Editor.SetBlur()
 		table.SetInputCapture(table.tableInputCapture)
-		table.EditorPages.SwitchToPage(pageNameTableEditorTable)
+		// A statement without a result set has nothing to put in the grid, so
+		// show the "N rows affected" panel instead of an empty table. Keyboard
+		// focus stays on the table so its shortcuts keep working.
+		table.EditorPages.SwitchToPage(pageNameTableEditorResultsInfo)
 		App.SetFocus(table)
 
 		// Arbitrary editor DML has no reliable table identity, so it must not
