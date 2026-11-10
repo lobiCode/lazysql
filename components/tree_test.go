@@ -380,17 +380,17 @@ func TestExpandAncestors_FourLevelTree(t *testing.T) {
 	root.AddChild(db)
 
 	schema := tview.NewTreeNode("public")
-	schema.SetReference("public")
+	schema.SetReference("mydb.public")
 	schema.Collapse()
 	db.AddChild(schema)
 
 	section := tview.NewTreeNode("tables")
-	section.SetReference("public.tables")
+	section.SetReference("mydb.public.tables")
 	section.Collapse()
 	schema.AddChild(section)
 
 	target := tview.NewTreeNode("users")
-	target.SetReference("public.tables.users")
+	target.SetReference("mydb.public.tables.users")
 	target.Collapse()
 	section.AddChild(target)
 
@@ -1425,4 +1425,85 @@ func TestSearch_SinglePartExactMatchDoesNotCollapseSiblings(t *testing.T) {
 
 func (m *schemaProgrammingMock) GetReferencingTables(context.Context, string, string) ([][]string, error) {
 	return nil, nil
+}
+
+// Regression: a PostgreSQL/MSSQL schema node used to carry a bare "schema"
+// reference, which GetTreeNodeData classified as a database. Expanding the
+// schema then made the SQL editor target a database named after the schema
+// (pq: database "public" does not exist).
+func TestSchemaNodeIsNotClassifiedAsDatabase(t *testing.T) {
+	tree := &Tree{DBDriver: &schemaProgrammingMock{}}
+	dbNode := tview.NewTreeNode("mydb")
+	dbNode.SetReference("mydb")
+
+	tree.addTableNodes("mydb", dbNode, map[string][]string{"public": {"users"}})
+	tree.enrichProgrammingNodes(
+		"mydb",
+		dbNode,
+		map[string][]string{"mydb": {"public.add_user", "audit.log_fn"}},
+		nil,
+		nil,
+	)
+
+	children := dbNode.GetChildren()
+	if len(children) != 2 {
+		t.Fatalf("schema nodes = %v, want audit and public", treeNodeTexts(children))
+	}
+	for _, schemaNode := range children {
+		schema := schemaNode.GetText()
+		if got := schemaNode.GetReference(); got != "mydb."+schema {
+			t.Errorf("schema %q reference = %v, want database-qualified %q", schema, got, "mydb."+schema)
+		}
+		data := tree.GetTreeNodeData(schemaNode)
+		if data.Type != NodeTypeSchema {
+			t.Errorf("schema %q type = %v, want NodeTypeSchema", schema, data.Type)
+		}
+		if data.Database != "mydb" || data.Schema != schema {
+			t.Errorf("schema %q data = %+v, want Database=mydb Schema=%s", schema, data, schema)
+		}
+	}
+
+	public := tree.findTreeChild(dbNode, "public")
+	for _, section := range public.GetChildren() {
+		data := tree.GetTreeNodeData(section)
+		if data.Type != NodeTypeSection || data.Database != "mydb" || data.Schema != "public" {
+			t.Errorf("section %q data = %+v, want Section in mydb.public", section.GetText(), data)
+		}
+		for _, item := range section.GetChildren() {
+			data := tree.GetTreeNodeData(item)
+			if data.Type == NodeTypeSection || data.Type == NodeTypeDatabase || data.Type == NodeTypeSchema {
+				t.Errorf("item %q type = %v, want a leaf object type", item.GetText(), data.Type)
+			}
+			if data.Database != "mydb" || data.Schema != "public" {
+				t.Errorf("item %q data = %+v, want Database=mydb Schema=public", item.GetText(), data)
+			}
+		}
+	}
+}
+
+func TestDatabasesToNodesQualifiesSchemaReferences(t *testing.T) {
+	tree := &Tree{DBDriver: &schemaProgrammingMock{}}
+	dbNode := tview.NewTreeNode("mydb")
+	dbNode.SetReference("mydb")
+
+	tree.databasesToNodes(map[string][]string{"public": {"users"}}, dbNode, false)
+
+	schemaNode := dbNode.GetChildren()[0]
+	if got := schemaNode.GetReference(); got != "mydb.public" {
+		t.Fatalf("schema reference = %v, want mydb.public", got)
+	}
+	if data := tree.GetTreeNodeData(schemaNode); data.Type != NodeTypeSchema || data.Database != "mydb" {
+		t.Fatalf("schema data = %+v, want NodeTypeSchema in mydb", data)
+	}
+	tablesNode := schemaNode.GetChildren()[0]
+	if got := tablesNode.GetReference(); got != "mydb.public.tables" {
+		t.Fatalf("tables reference = %v, want mydb.public.tables", got)
+	}
+	if data := tree.GetTreeNodeData(tablesNode); data.Type != NodeTypeSection || data.Database != "mydb" {
+		t.Fatalf("tables data = %+v, want NodeTypeSection in mydb", data)
+	}
+	table := tree.GetTreeNodeData(tablesNode.GetChildren()[0])
+	if table.Type != NodeTypeTable || table.Database != "mydb" || table.Schema != "public" || table.Name != "users" {
+		t.Fatalf("table data = %+v, want mydb.public.users table", table)
+	}
 }
