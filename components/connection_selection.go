@@ -15,7 +15,6 @@ import (
 	"github.com/jorgerojas26/lazysql/drivers"
 	"github.com/jorgerojas26/lazysql/helpers"
 	"github.com/jorgerojas26/lazysql/helpers/logger"
-	"github.com/jorgerojas26/lazysql/internal/telemetry"
 	"github.com/jorgerojas26/lazysql/models"
 )
 
@@ -165,7 +164,6 @@ func (cs *ConnectionSelection) Connect(connection models.Connection) *tview.Appl
 		if waitsForPort {
 			port, err := helpers.GetFreePort()
 			if err != nil {
-				usage.ConnectionFailed(telemetry.ConnectionFailure(err))
 				cs.StatusText.SetText(err.Error()).SetTextStyle(tcell.StyleDefault.Foreground(app.Styles.ErrorColor).Background(app.Styles.PrimitiveBackgroundColor))
 				return App.Draw()
 			}
@@ -193,7 +191,6 @@ func (cs *ConnectionSelection) Connect(connection models.Connection) *tview.Appl
 			}
 
 			if err := helpers.RunCommand(App.Context(), cmd, timeout, onCommandDone); err != nil {
-				usage.ConnectionFailed(telemetry.ConnectionFailure(err))
 				cs.StatusText.SetText(err.Error()).SetTextStyle(tcell.StyleDefault.Foreground(app.Styles.ErrorColor).Background(app.Styles.PrimitiveBackgroundColor))
 				return App.Draw()
 			}
@@ -207,7 +204,6 @@ func (cs *ConnectionSelection) Connect(connection models.Connection) *tview.Appl
 				}
 
 				if portInt, err := strconv.Atoi(interpolatedPort); err != nil || portInt < 0 || portInt >= 1<<16 {
-					usage.ConnectionFailed(telemetry.InvalidConnection)
 					cs.StatusText.SetText("bad port: " + interpolatedPort).SetTextStyle(tcell.StyleDefault.Foreground(app.Styles.ErrorColor).Background(app.Styles.PrimitiveBackgroundColor))
 					return App.Draw()
 				}
@@ -217,7 +213,6 @@ func (cs *ConnectionSelection) Connect(connection models.Connection) *tview.Appl
 				App.Draw()
 
 				if err := helpers.WaitForPort(App.Context(), interpolatedPort); err != nil {
-					usage.ConnectionFailed(telemetry.ConnectionFailure(err))
 					cs.StatusText.SetText(err.Error()).SetTextStyle(tcell.StyleDefault.Foreground(app.Styles.ErrorColor).Background(app.Styles.PrimitiveBackgroundColor))
 					return App.Draw()
 				}
@@ -256,7 +251,6 @@ func (cs *ConnectionSelection) Connect(connection models.Connection) *tview.Appl
 	case drivers.DriverClickHouse:
 		newDBDriver = &drivers.ClickHouse{PoolConfig: poolConfig}
 	default:
-		usage.ConnectionFailed(telemetry.Driver)
 		errorMsg := fmt.Sprintf("Unsupported database provider: '%s'. Valid providers are: mysql, postgres, sqlite3, sqlserver, clickhouse", connection.Provider)
 		cs.StatusText.SetText(errorMsg).SetTextStyle(tcell.StyleDefault.Foreground(app.Styles.ErrorColor).Background(app.Styles.PrimitiveBackgroundColor))
 		return App.Draw()
@@ -264,12 +258,9 @@ func (cs *ConnectionSelection) Connect(connection models.Connection) *tview.Appl
 
 	err = newDBDriver.Connect(App.Context(), connection.URL)
 	if err != nil {
-		usage.ConnectionFailed(telemetry.ConnectionFailure(err))
 		cs.StatusText.SetText(err.Error()).SetTextStyle(tcell.StyleDefault.Foreground(app.Styles.ErrorColor).Background(app.Styles.PrimitiveBackgroundColor))
 		return App.Draw()
 	}
-
-	usage.Connected(newDBDriver.GetProvider(), connection.ReadOnly)
 
 	selectedRow, selectedCol := connectionsTable.GetSelection()
 	cell := connectionsTable.GetCell(selectedRow, selectedCol)
