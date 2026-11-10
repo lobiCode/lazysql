@@ -471,8 +471,24 @@ func (home *Home) isCurrentTabFiltering() bool {
 	return false
 }
 
+// textInputFocused reports whether keyboard focus is inside a text field.
+// Mouse clicks can focus the WHERE filter or a sidebar field without going
+// through the shortcut that sets the tab's filtering/editing flags, so the
+// flags alone cannot tell whether a printable key is text or a command.
+func textInputFocused() bool {
+	switch app.App.GetFocus().(type) {
+	case *tview.InputField, *tview.TextArea:
+		return true
+	}
+	return false
+}
+
 func (home *Home) rightWrapperInputCapture(event *tcell.EventKey) *tcell.EventKey {
 	var tab *Tab
+
+	if event.Key() == tcell.KeyRune && textInputFocused() {
+		return event
+	}
 
 	command := app.Keymaps.Group(app.TableGroup).Resolve(event)
 
@@ -591,6 +607,10 @@ func (home *Home) rightWrapperInputCapture(event *tcell.EventKey) *tcell.EventKe
 }
 
 func (home *Home) homeInputCapture(event *tcell.EventKey) *tcell.EventKey {
+	if event.Key() == tcell.KeyRune && textInputFocused() {
+		return event
+	}
+
 	tab := home.TabbedPane.GetCurrentTab()
 
 	var table *ResultsTable
